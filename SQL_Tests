@@ -1,0 +1,162 @@
+SELECT * 
+FROM orders
+WHERE user_id = '149753'
+
+SELECT * FROM order_products_train as opt
+JOIN products as p
+ON opt.product_id = p.product_id
+WHERE order_id = '2026142';
+
+order_id | user_id | eval_set | order_number | order_dow | order_hour_of_day | days_since_prior_order 
+----------+---------+----------+--------------+-----------+-------------------+------------------------
+  1931842 |  149753 | prior    |            1 |         0 |                19 |                       
+  2026142 |  149753 | prior    |            2 |         0 |                13 |                   21.0
+   804132 |  149753 | prior    |            3 |         3 |                19 |                   10.0
+  1247232 |  149753 | prior    |            4 |         0 |                10 |                   11.0
+  1464159 |  149753 | prior    |            5 |         2 |                 9 |                    9.0
+   869145 |  149753 | prior    |            6 |         2 |                11 |                    7.0
+  2935234 |  149753 | prior    |            7 |         1 |                12 |                    6.0
+   465219 |  149753 | prior    |            8 |         0 |                18 |                   30.0
+  1257054 |  149753 | prior    |            9 |         2 |                 9 |                    9.0
+  2081677 |  149753 | prior    |           10 |         6 |                11 |                   11.0
+  2963886 |  149753 | prior    |           11 |         2 |                11 |                   17.0
+  1725651 |  149753 | prior    |           12 |         3 |                18 |                   22.0
+   146807 |  149753 | prior    |           13 |         2 |                14 |                   30.0
+  2222141 |  149753 | prior    |           14 |         4 |                14 |                    9.0
+   857612 |  149753 | prior    |           15 |         0 |                16 |                   30.0
+   259939 |  149753 | prior    |           16 |         1 |                16 |                    8.0
+  1501568 |  149753 | prior    |           17 |         1 |                14 |                   21.0
+  1889676 |  149753 | prior    |           18 |         2 |                12 |                    8.0
+  3261917 |  149753 | prior    |           19 |         0 |                17 |                   19.0
+  2813632 |  149753 | train    |           20 |         1 |                14 |                   30.0
+
+  SELECT o.user_id, 
+  COUNT(p.product_id) as no_products
+  FROM orders o 
+  JOIN order_products_prior opp
+    ON o.order_id = opp.order_id
+JOIN products p 
+ON opp.product_id = p.product_id
+GROUP BY o.user_id
+ORDER BY no_products DESC;
+
+
+SELECT COUNT(DISTINCT(user_id))
+FROM orders;
+
+SELECT o.user_id, CASE WHEN MAX(o.days_since_prior_order) < 31 THEN 'active' ELSE 'inactive' END AS user_status FROM orders o GROUP BY o.user_id);
+
+
+
+COPY (SELECT * FROM order_products_train as opt JOIN products as p ON opt.product_id = p.product_id WHERE order_id = '2813632';) TO '/Users/miguelgris/Desktop/toporder.csv' DELIMITER ',' CSV HEADER;
+
+
+WITH all_orders AS (
+    SELECT *
+    FROM order_products_prior opp
+    RIGHT JOIN order_products_train opt
+    ON  opp.order_id = opt.order_id
+    ORDER BY opp.add_to_cart_order ASC
+),
+
+all_order_products AS (
+    SELECT *
+    FROM all_orders ao
+    JOIN products p 
+    ON ao.product_id = p.product_id
+),
+depts AS (
+    SELECT *
+    FROM all_order_products aop
+    JOIN departments d
+    ON aop.department_id = d.department_id
+)
+
+
+CREATE VIEW user_segmentation AS 
+SELECT user_id, 
+COUNT(order_id), 
+ROUND(AVG(days_since_prior_order), 2), 
+CASE WHEN (ROUND(AVG (days_since_prior_order)) <= 3.50) AND (COUNT(order_id) >= 60) THEN 'small business'
+    WHEN (ROUND(AVG (days_since_prior_order)) > 3.50) AND (COUNT(order_id) >= 60) THEN 'office'
+    WHEN (ROUND(AVG (days_since_prior_order)) <= 20) AND (COUNT(order_id) < 60) THEN 'active'
+    WHEN (ROUND(AVG (days_since_prior_order)) > 20) AND (COUNT(order_id) < 60) THEN 'inactive'
+END 
+AS user_type 
+FROM orders 
+GROUP BY user_id
+;
+
+\COPY (SELECT * FROM user_segmentation) to 'final_segmentation' with csv
+
+SELECT COUNT(user_type)
+FROM user_segmentation
+WHERE user_type = 'active';
+
+
+SELECT user_id, COUNT(order_id), ROUND(AVG(days_since_prior_order), 2), CASE WHEN ROUND(AVG (days_since_prior_order)) <= 3.50 THEN 'small business' WHEN ROUND(AVG (days_since_prior_order)) >= 7 THEN 'office' WHEN ROUND(AVG(days_since_prior_order)) <= 15  THEN 'office' WHEN COUNT(order_id) <= 30 THEN 'active' WHEN COUNT(order_id) >= 30 THEN 'inactive' END AS user_type FROM orders GROUP BY user_id ORDER BY COUNT(order_id) DESC;
+
+\COPY (SELECT user_id, COUNT(order_id), ROUND(AVG(days_since_prior_order), 2), CASE WHEN ROUND(AVG (days_since_prior_order)) <= 3.50 THEN 'small business' WHEN ROUND(AVG (days_since_prior_order)) >= 7 THEN 'office' WHEN ROUND(AVG(days_since_prior_order)) <= 15  THEN 'office' WHEN ROUND(AVG(days_since_prior_order)) <= 30 THEN 'active' WHEN ROUND(AVG(days_since_prior_order)) >= 30 THEN 'inactive' END AS user_type FROM orders GROUP BY user_id ORDER BY COUNT(order_id) DESC) to '\Users\miguelgris\Desktop\biz_cust_class.csv' with csv
+
+WITH all_train_info AS (
+    SELECT *,
+    p.product_name as p_product_name,
+    opt.product_id as opt_product_id
+FROM products p 
+JOIN order_products_train opt
+ON p.product_id = opt.product_id
+)
+SELECT p_product_name,
+COUNT(opt_product_id)
+FROM all_train_info
+WHERE add_to_cart_order = 1
+GROUP BY p_product_name
+ORDER BY COUNT(opt_product_id) DESC;
+
+WITH all_train_info AS (
+    SELECT *,
+    p.product_name as p_product_name,
+    opt.product_id as opt_product_id
+FROM products p 
+JOIN order_products_train opt
+ON p.product_id = opt.product_id
+)
+SELECT p_product_name,
+COUNT(opt_product_id)
+FROM all_train_info
+WHERE add_to_cart_order = 5
+GROUP BY p_product_name
+ORDER BY COUNT(opt_product_id) DESC;
+
+
+WITH all_prior_info AS (
+    SELECT *,
+    p.product_name as p_product_name,
+    opp.product_id as opp_product_id
+FROM products p 
+JOIN order_products_prior opp
+ON p.product_id = opp.product_id
+)
+SELECT p_product_name,
+COUNT(opp_product_id)
+FROM all_prior_info
+WHERE add_to_cart_order = 2
+GROUP BY p_product_name
+ORDER BY COUNT(opp_product_id) DESC;
+
+
+SELECT order_id, product_id
+FROM order_products_train
+ORDER BY order_id, product_id
+LIMIT 100;
+
+
+SELECT o.order_id, 
+COUNT(p.product_id), 
+ROUND(AVG(o.days_since_prior_order),2)
+FROM products p
+JOIN order_products_train opt
+on p.product_id = opt.product_id
+JOIN orders o
+ON opt.order_id = o.order_id
+GROUP BY o.order_id;
