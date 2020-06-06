@@ -1,0 +1,11 @@
+Instacart Strategic Marketing Analysis
+
+In this project we analyze the behavioral patterns of Instacart online grocery shopping users for targeted marketing and to further investigate avenues that will expand the business model.
+
+This repository contains:
+- Case Study Presentation
+- Code tests
+- Appendix (Jupyter Notebook)
+- Final Segmentation table
+
+Dataset: https://www.kaggle.com/c/instacart-market-basket-analysis
